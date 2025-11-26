@@ -83,7 +83,7 @@ class RichPdb(pdb.Pdb):
         )
 
         # Clean simple prompt
-        self.prompt: str = "(nicerpdb) "
+        self.prompt: str = " (nicerpdb) > "
 
     # -------------------- Rendering Helpers ----------------------------
 
@@ -186,15 +186,18 @@ class RichPdb(pdb.Pdb):
 
     # -------------------- Interaction Override --------------------------
 
-    def interaction(self, frame: FrameType, traceback_obj: Any) -> None:
+    def interaction(self, frame: FrameType | None, traceback_obj: Any) -> None:
         """Main entry when debugger stops."""
         console.rule("[bold magenta]Debugger stopped[/bold magenta]")
         try:
-            self._render_source_block(frame.f_code.co_filename, frame.f_lineno, self.context_lines)
-            if self.show_locals:
-                self._render_vars(frame)
-            if self.config.get("show_stack", True):
-                self._render_stack()
+            if frame is not None:
+                self._render_source_block(
+                    frame.f_code.co_filename, frame.f_lineno, self.context_lines
+                )
+                if self.show_locals:
+                    self._render_vars(frame)
+                if self.config.get("show_stack", True):
+                    self._render_stack()
         except Exception:
             console.print(Traceback.from_exception(*sys.exc_info()))
 

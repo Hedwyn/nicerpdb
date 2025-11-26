@@ -4,3 +4,6 @@ version = "0.1.0"
 description = "A TUI frontend for pdb"
 requires-python = ">=3.9"
 dependencies = ["rich", "click"]
+
+[project.scripts]
+nicerpdb="nicerpdb.cli:nicerpdb"
