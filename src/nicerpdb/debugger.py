@@ -263,7 +263,7 @@ class RichPdb(pdb.Pdb):
 def set_trace(*, header: str | None = None) -> None:
     """Drop into RichPdb."""
     frame = inspect.currentframe().f_back
-    dbg = RichPdb(show_locals=show_locals, context_lines=context_lines)
+    dbg = RichPdb()
     dbg.reset()
     if header is not None:
         dbg.message(header)
