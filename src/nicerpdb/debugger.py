@@ -14,7 +14,7 @@ Enhancements:
 """
 
 from __future__ import annotations
-
+from dataclasses import dataclass
 import inspect
 import linecache
 import os
@@ -38,51 +38,60 @@ from rich.traceback import Traceback
 # Global console
 console: Console = Console()
 
-# Default config
-DEFAULT_CONFIG: dict[str, Any] = {
-    "context_lines": 3,
-    "show_locals": True,
-    "show_stack": False,
-}
+
+@dataclass
+class NicerPdbConfig:
+    """
+    Debugger parameters, can be set a TOML file.
+    """
+
+    context_lines: int = 10
+    show_locals: bool = True
+    show_stack: bool = False
 
 
-def load_config() -> dict[str, Any]:
+DEFAULT_CONFIG_PATH = "~/.nicerpdb.toml"
+
+
+def load_config(config_path: str | None = None) -> NicerPdbConfig:
     """Load ~/.nicerpdb.toml if present."""
-    config_path = os.path.expanduser("~/.nicerpdb.toml")
-    cfg: dict[str, Any] = DEFAULT_CONFIG.copy()
+    config_path = config_path or os.path.expanduser("~/.nicerpdb.toml")
     if os.path.exists(config_path):
         try:
             with open(config_path, "rb") as f:
                 loaded = tomllib.load(f)
-                cfg.update(loaded)
-        except Exception:
-            console.print("[yellow]Warning: error reading ~/.nicerpdb.toml[/]")
-    return cfg
+                return NicerPdbConfig(**loaded)
+        except Exception as exc:
+            console.print(f"[yellow]Warning: error reading ~/.nicerpdb.toml: {exc}[/]")
+    return NicerPdbConfig()
 
 
 class RichPdb(pdb.Pdb):
     """Custom Pdb frontend using Rich."""
 
-    config: dict[str, Any] = load_config()
-
     def __init__(
         self,
         *args: Any,
-        show_locals: Optional[bool] = None,
-        context_lines: Optional[int] = None,
+        config: NicerPdbConfig | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
-
-        self.show_locals: bool = (
-            show_locals if show_locals is not None else self.config["show_locals"]
-        )
-        self.context_lines: int = (
-            context_lines if context_lines is not None else self.config["context_lines"]
-        )
+        self.config = config or load_config()
 
         # Clean simple prompt
         self.prompt: str = " (nicerpdb) > "
+
+    @property
+    def show_locals(self) -> bool:
+        return self.config.show_locals
+
+    @property
+    def context_lines(self) -> int:
+        return self.config.context_lines
+
+    @property
+    def show_stack(self) -> bool:
+        return self.config.show_stack
 
     # -------------------- Rendering Helpers ----------------------------
 
@@ -192,7 +201,7 @@ class RichPdb(pdb.Pdb):
             if frame is not None:
                 if self.show_locals:
                     self._render_vars(frame)
-                if self.config.get("show_stack", False):
+                if self.show_stack:
                     self._render_stack()
                 self._render_source_block(
                     frame.f_code.co_filename, frame.f_lineno, self.context_lines
@@ -251,11 +260,13 @@ class RichPdb(pdb.Pdb):
 # ----------------------- Public set_trace ------------------------------
 
 
-def set_trace(show_locals: Optional[bool] = None, context_lines: Optional[int] = None) -> None:
+def set_trace(*, header: str | None = None) -> None:
     """Drop into RichPdb."""
     frame = inspect.currentframe().f_back
     dbg = RichPdb(show_locals=show_locals, context_lines=context_lines)
     dbg.reset()
+    if header is not None:
+        dbg.message(header)
     dbg.set_trace(frame)
 
 

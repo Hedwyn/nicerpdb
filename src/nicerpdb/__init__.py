@@ -30,6 +30,6 @@ if HAS_PYTEST:
             last_tb = last_tb.tb_next
 
         frame = last_tb.tb_frame
-        debugger = RichPdb(show_locals=True, context_lines=20)
+        debugger = RichPdb()
         debugger.reset()
         debugger.interaction(frame, tb)
