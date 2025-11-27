@@ -181,8 +181,8 @@ class RichPdb(pdb.Pdb):
             if name in g:
                 globals_table.add_row(name, Pretty(g[name], max_length=150))
 
-        console.print(locals_table)
         console.print(globals_table)
+        console.print(locals_table)
 
     # -------------------- Interaction Override --------------------------
 
