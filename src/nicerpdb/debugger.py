@@ -21,7 +21,7 @@ import os
 import pdb
 import sys
 from types import FrameType
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 try:
     import tomllib  # Py3.11+
@@ -39,17 +39,17 @@ from rich.traceback import Traceback
 console: Console = Console()
 
 # Default config
-DEFAULT_CONFIG: Dict[str, Any] = {
+DEFAULT_CONFIG: dict[str, Any] = {
     "context_lines": 3,
     "show_locals": True,
-    "show_stack": True,
+    "show_stack": False,
 }
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load ~/.nicerpdb.toml if present."""
     config_path = os.path.expanduser("~/.nicerpdb.toml")
-    cfg: Dict[str, Any] = DEFAULT_CONFIG.copy()
+    cfg: dict[str, Any] = DEFAULT_CONFIG.copy()
     if os.path.exists(config_path):
         try:
             with open(config_path, "rb") as f:
@@ -190,13 +190,13 @@ class RichPdb(pdb.Pdb):
         console.rule("[bold magenta]Debugger stopped[/bold magenta]")
         try:
             if frame is not None:
+                if self.show_locals:
+                    self._render_vars(frame)
+                if self.config.get("show_stack", False):
+                    self._render_stack()
                 self._render_source_block(
                     frame.f_code.co_filename, frame.f_lineno, self.context_lines
                 )
-                if self.show_locals:
-                    self._render_vars(frame)
-                if self.config.get("show_stack", True):
-                    self._render_stack()
         except Exception:
             console.print(Traceback.from_exception(*sys.exc_info()))
 
