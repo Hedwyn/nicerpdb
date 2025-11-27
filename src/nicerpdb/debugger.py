@@ -230,15 +230,19 @@ class RichPdb(pdb.Pdb):
 
     do_w = do_where
 
-    def do_l(self, arg: str) -> None:
+    def do_list(self, arg: str) -> None:
         """Syntax highlighted single window listing."""
         frame = self.curframe
         self._render_source_block(frame.f_code.co_filename, frame.f_lineno, self.context_lines)
 
-    def do_ll(self, arg: str) -> None:
+    do_l = do_list
+
+    def do_longlist(self, arg: str) -> None:
         """Full file listing."""
         frame = self.curframe
         self._render_full_file(frame.f_code.co_filename, frame.f_lineno)
+
+    do_ll = do_longlist
 
     def message(self, msg: str) -> None:
         if msg:
