@@ -14,19 +14,20 @@ Enhancements:
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+
 import inspect
 import linecache
 import os
 import pdb
 import sys
+from dataclasses import dataclass
 from types import FrameType
-from typing import Any, List, Optional
+from typing import Any, Callable, List, Optional, Protocol, TypeVar
 
 try:
     import tomllib  # Py3.11+
 except ImportError:
-    import tomli as tomllib
+    import tomli as tomllib  # type: ignore[no-redef]
 
 from rich.console import Console
 from rich.panel import Panel
@@ -66,6 +67,31 @@ def load_config(config_path: str | None = None) -> NicerPdbConfig:
     return NicerPdbConfig()
 
 
+CmdRet = TypeVar("CmdRet", bound=bool | None, covariant=True)
+
+
+class PdbCommand(Protocol[CmdRet]):
+    def __call__(self, _: RichPdb, /, arg: str) -> CmdRet: ...
+
+
+def accepts_int_arg(
+    command: Callable[[RichPdb, int | None], CmdRet],
+) -> PdbCommand[CmdRet]:
+    def wrapper(self: RichPdb, arg: str) -> CmdRet:
+        if not arg:
+            return command(self, None)
+
+        try:
+            arg_value = int(arg)
+        except ValueError:
+            self.print_error(f"Invalid argument '{arg}'. Expected an integer.")
+            arg_value = None
+
+        return command(self, arg_value)
+
+    return wrapper
+
+
 class RichPdb(pdb.Pdb):
     """Custom Pdb frontend using Rich."""
 
@@ -80,6 +106,7 @@ class RichPdb(pdb.Pdb):
 
         # Clean simple prompt
         self.prompt: str = " (nicerpdb) > "
+        self.errors: list[str] = []
 
     @property
     def show_locals(self) -> bool:
@@ -134,8 +161,13 @@ class RichPdb(pdb.Pdb):
         )
         console.print(Panel(syntax, title=f"Full source: {filename}", expand=True))
 
+    def print_error(self, error: str) -> None:
+        console.print(f"[red]Error:[/] {error}")
+
     def _render_stack(self) -> None:
-        frame: FrameType = self.curframe
+        if (frame := self.curframe) is None:
+            # TODO: warning / error ?
+            return
         stack: List[FrameType] = []
         cur: Optional[FrameType] = frame
 
@@ -213,16 +245,16 @@ class RichPdb(pdb.Pdb):
 
     # -------------------- Command overrides ------------------------------
 
-    def default(self, line: str) -> Optional[bool]:
+    def default(self, line: str) -> None:
         line = line.strip()
         if not line:
-            return False
+            return
         try:
             val = self._getval(line)
             console.print(Pretty(val, max_length=300))
-            return False
+            return
         except Exception:
-            return super().default(line)
+            super().default(line)
 
     def do_p(self, arg: str) -> None:
         if not arg.strip():
@@ -231,23 +263,33 @@ class RichPdb(pdb.Pdb):
         try:
             console.print(Pretty(self._getval(arg), max_length=300))
         except Exception as e:
-            console.print(f"[red]Error:[/] {e}")
+            self.print_error(str(e))
 
     def do_where(self, arg: str) -> None:
         self._render_stack()
 
     do_w = do_where
 
-    def do_list(self, arg: str) -> None:
+    @accepts_int_arg
+    def do_list(self, lines: int | None) -> bool | None:  # type: ignore[override]
         """Syntax highlighted single window listing."""
         frame = self.curframe
-        self._render_source_block(frame.f_code.co_filename, frame.f_lineno, self.context_lines)
+        if frame is None:
+            self.print_error("Running out of a frame context. Cannot show source")
+            return None
+        self._render_source_block(
+            frame.f_code.co_filename, frame.f_lineno, lines or self.context_lines
+        )
+        return None
 
-    do_l = do_list
+    do_l = do_list  # type: ignore[assignment]
 
     def do_longlist(self, arg: str) -> None:
         """Full file listing."""
         frame = self.curframe
+        if frame is None:
+            self.print_error("Running out of a frame context. Cannot show source")
+            return
         self._render_full_file(frame.f_code.co_filename, frame.f_lineno)
 
     do_ll = do_longlist
@@ -262,7 +304,8 @@ class RichPdb(pdb.Pdb):
 
 def set_trace(*, header: str | None = None) -> None:
     """Drop into RichPdb."""
-    frame = inspect.currentframe().f_back
+    current_frame = inspect.currentframe()
+    frame = current_frame.f_back if current_frame else None
     dbg = RichPdb()
     dbg.reset()
     if header is not None:
