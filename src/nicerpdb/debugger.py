@@ -15,13 +15,13 @@ Enhancements:
 
 from __future__ import annotations
 
-import pdb
-import sys
 import inspect
 import linecache
 import os
+import pdb
+import sys
 from types import FrameType
-from typing import Any, Optional, List, Dict
+from typing import Any, Dict, List, Optional
 
 try:
     import tomllib  # Py3.11+
@@ -29,12 +29,11 @@ except ImportError:
     import tomli as tomllib
 
 from rich.console import Console
+from rich.panel import Panel
+from rich.pretty import Pretty
 from rich.syntax import Syntax
 from rich.table import Table
-from rich.pretty import Pretty
-from rich.panel import Panel
 from rich.traceback import Traceback
-
 
 # Global console
 console: Console = Console()

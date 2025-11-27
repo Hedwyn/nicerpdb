@@ -24,9 +24,12 @@ if HAS_PYTEST:
     @pytest.hookimpl()
     def pytest_exception_interact(call: CallInfo, report: object):
         # Extract the real traceback object (etype, evalue, tb)
-
         *_, tb = call.excinfo._excinfo
+        last_tb = tb
+        while last_tb.tb_next is not None:
+            last_tb = last_tb.tb_next
 
+        frame = last_tb.tb_frame
         debugger = RichPdb(show_locals=True, context_lines=20)
         debugger.reset()
-        debugger.interaction(None, tb)
+        debugger.interaction(frame, tb)
