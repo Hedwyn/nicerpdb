@@ -22,6 +22,7 @@ import pdb
 import subprocess
 import sys
 from dataclasses import dataclass
+from functools import partialmethod
 from types import FrameType
 from typing import Any, Callable, List, Optional, Protocol, TypeVar
 
@@ -30,6 +31,7 @@ try:
 except ImportError:
     import tomli as tomllib  # type: ignore[no-redef]
 
+from rich import pretty
 from rich.console import Console
 from rich.panel import Panel
 from rich.pretty import Pretty
@@ -39,6 +41,9 @@ from rich.traceback import Traceback
 
 # Global console
 console: Console = Console()
+
+
+class FormattingError(Exception): ...
 
 
 @dataclass
@@ -225,6 +230,47 @@ class RichPdb(pdb.Pdb):
         console.print(globals_table)
         console.print(locals_table)
 
+    def resolve_cmd_variables(self, cmd: str) -> str:
+        args = cmd.split()
+        formatted_args = []
+        for arg in args:
+            if not arg.startswith("%"):
+                formatted_args.append(arg)
+                continue
+
+            var_name = arg[1:]
+            frame = self.curframe
+            if frame is None:
+                raise FormattingError("No current frame to resolve variables")
+            if var_name in frame.f_locals:
+                value = frame.f_locals[var_name]
+            elif var_name in frame.f_globals:
+                value = frame.f_globals[var_name]
+            else:
+                raise FormattingError(f"Variable '{var_name}' not found in locals or globals")
+            formatted_args.append(str(value))
+        return " ".join(formatted_args)
+
+    def run_shell_command(self, arg: str, format: bool = False, pretty: bool = False) -> None:
+        """
+        Runs a shell command within the debugger session.
+        """
+        cmd = arg
+        if format:
+            try:
+                cmd = self.resolve_cmd_variables(cmd)
+            except FormattingError as exc:
+                self.print_error(str(exc))
+                return
+        proc = subprocess.run(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        output = proc.stdout if not pretty else Syntax(proc.stdout, "shell")
+        console.print(output)
+        if proc.stderr:
+            output = proc.stderr if not pretty else Syntax(proc.stderr, "shell")
+            console.print(f"[red]{output}[/]")
+
     # -------------------- Interaction Override --------------------------
 
     def interaction(self, frame: FrameType | None, traceback_obj: Any) -> None:
@@ -293,20 +339,17 @@ class RichPdb(pdb.Pdb):
             return
         self._render_full_file(frame.f_code.co_filename, frame.f_lineno)
 
+    # All shell command variant
     do_ll = do_longlist
-
-    def do_shell(self, arg: str) -> None:
-        """
-        Runs a shell command within the debugger session.
-        """
-        proc = subprocess.run(
-            arg, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        console.print(proc.stdout)
-        if proc.stderr:
-            console.print(f"[red]{proc.stderr}[/]")
-
+    do_shell = partialmethod(run_shell_command, format=False, pretty=False)
     do_sh = do_shell
+    do_fshell = partialmethod(run_shell_command, format=True, pretty=False)
+    do_fsh = do_fshell
+    do_prettyshell = partialmethod(run_shell_command, format=False, pretty=True)
+    do_psh = do_prettyshell
+    do_fprettyshell = partialmethod(run_shell_command, format=True, pretty=True)
+    do_fpsh = do_fprettyshell
+    do_pfsh = do_fprettyshell
 
     def message(self, msg: str) -> None:
         if msg:
