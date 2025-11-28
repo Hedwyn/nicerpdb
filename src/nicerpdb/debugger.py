@@ -19,6 +19,7 @@ import inspect
 import linecache
 import os
 import pdb
+import subprocess
 import sys
 from dataclasses import dataclass
 from types import FrameType
@@ -293,6 +294,19 @@ class RichPdb(pdb.Pdb):
         self._render_full_file(frame.f_code.co_filename, frame.f_lineno)
 
     do_ll = do_longlist
+
+    def do_shell(self, arg: str) -> None:
+        """
+        Runs a shell command within the debugger session.
+        """
+        proc = subprocess.run(
+            arg, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        console.print(proc.stdout)
+        if proc.stderr:
+            console.print(f"[red]{proc.stderr}[/]")
+
+    do_sh = do_shell
 
     def message(self, msg: str) -> None:
         if msg:
