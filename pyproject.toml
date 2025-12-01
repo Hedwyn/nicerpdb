@@ -1,6 +1,6 @@
 [project]
 name = "nicerpdb"
-version = "0.2.0"
+version = "0.3.0"
 description = "A TUI frontend for pdb"
 requires-python = ">=3.9"
 readme = "README.md"
