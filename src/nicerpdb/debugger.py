@@ -54,7 +54,7 @@ class NicerPdbConfig:
 
     context_lines: int = 10
     show_locals: bool = True
-    show_stack: bool = False
+    show_stack: bool = True
 
 
 DEFAULT_CONFIG_PATH = "~/.nicerpdb.toml"
@@ -113,6 +113,88 @@ class RichPdb(pdb.Pdb):
         # Clean simple prompt
         self.prompt: str = " (nicerpdb) > "
         self.errors: list[str] = []
+
+    def print_stack_trace(self, depth: int = 5) -> None:
+        try:
+            for frame_lineno in self.stack[-depth:]:
+                self.print_stack_entry(frame_lineno)
+        except KeyboardInterrupt:
+            pass
+
+    def format_stack_entry(
+        self,
+        frame_lineno: tuple[object, int],
+        lprefix: str = "",
+    ) -> str:
+        """
+        Return a one-line summary for a stack entry.
+
+        We keep this method returning a simple string so existing callers that expect the
+        pdb-format summary continue to work. Detailed, colored rendering is done in
+        print_stack_entry.
+        """
+        frame, lineno = frame_lineno
+        code = frame.f_code
+        filename = code.co_filename
+        funcname = code.co_name
+
+        # mimic pdb's concise stack entry format
+        return f'{lprefix}File "{filename}", line {lineno}, in {funcname}'
+
+    def print_stack_entry(
+        self,
+        frame_lineno: tuple[object, int],
+        prompt_prefix: str | None = None,
+        context: int = 5,
+    ) -> None:
+        """
+        Render a stack entry with Rich: show `context` lines around `lineno` with syntax
+        highlighting. The current line is highlighted by Syntax's highlight_lines; panel
+        and border styles are chosen to be soft on dark backgrounds.
+        """
+        frame, lineno = frame_lineno
+        code = frame.f_code
+        filename = code.co_filename
+        funcname = code.co_name
+
+        # Compute snippet range (1-based lines)
+        start = max(1, lineno - context)
+        end = lineno + context
+
+        # Read the lines; linecache returns '' for missing lines so join is safe
+        snippet_lines: list[str] = [
+            (linecache.getline(filename, i) or "") for i in range(start, end + 1)
+        ]
+        snippet = "".join(snippet_lines)
+
+        # Build a one-line header (keeps compatibility with pdb callers)
+        header = self.format_stack_entry(frame_lineno, lprefix=(prompt_prefix or ""))
+
+        # Syntax block with the current line highlighted.
+        # Rich's Syntax will visually distinguish highlighted lines; we choose a soft panel/border style
+        # that reads well on dark backgrounds.
+        console.print(header)
+        if not snippet.strip():
+            return
+        syntax = Syntax(
+            snippet,
+            "python",
+            line_numbers=True,
+            start_line=start,
+            highlight_lines={lineno},
+            word_wrap=False,
+        )
+
+        panel = Panel(
+            syntax,
+            title=f"[bold]{funcname} — {filename}:{lineno}[/]",
+            border_style="grey37",
+            padding=(0, 1),
+        )
+
+        # Print header (plain) then the panel. The header keeps textual compatibility; the panel
+        # provides the rich highlighted context. No extra "current frame" messages are printed.
+        console.print(panel)
 
     @property
     def show_locals(self) -> bool:
@@ -281,10 +363,7 @@ class RichPdb(pdb.Pdb):
                 if self.show_locals:
                     self._render_vars(frame)
                 if self.show_stack:
-                    self._render_stack()
-                self._render_source_block(
-                    frame.f_code.co_filename, frame.f_lineno, self.context_lines
-                )
+                    self.print_stack_trace(depth=1)
         except Exception:
             console.print(Traceback.from_exception(*sys.exc_info()))
 
