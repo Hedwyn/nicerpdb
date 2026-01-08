@@ -23,6 +23,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from functools import partialmethod
+from tkinter import Frame
 from types import FrameType, TracebackType
 from typing import Any, Callable, Protocol, TypeAlias, TypeVar
 
@@ -254,17 +255,31 @@ class RichPdb(pdb.Pdb):
     def print_error(self, error: str) -> None:
         console.print(f"[red]Error:[/] {error}")
 
-    def _render_stack(self) -> None:
-        if (frame := self.curframe) is None:
-            # TODO: warning / error ?
-            return
+    def build_call_stack(
+        self,
+        start_frame: FrameType | None = None,
+        *,
+        reversed: bool = False,
+        max_depth: int | None = None,
+    ) -> list[FrameType]:
+        start_frame = start_frame or self.curframe
         stack: list[FrameType] = []
-        cur: FrameType | None = frame
+        if start_frame is None:
+            return stack
+
+        cur: FrameType | None = start_frame
 
         while cur:
             stack.append(cur)
             cur = cur.f_back
-        stack.reverse()
+            if max_depth is not None and len(stack) == max_depth:
+                break
+        if reversed:
+            stack.reverse()
+        return stack
+
+    def _render_stack(self) -> None:
+        stack = self.build_call_stack()
 
         table = Table(title="Stack (most recent last)", expand=True)
         table.add_column("#", justify="right")
