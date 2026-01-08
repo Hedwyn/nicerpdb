@@ -414,15 +414,38 @@ class RichPdb(pdb.Pdb):
     do_w = do_where
 
     @accepts_int_arg
-    def do_list(self, lines: int | None) -> bool | None:  # type: ignore[override]
-        """Syntax highlighted single window listing."""
+    def do_frame(self, frame_id: int | None) -> bool | None:
+        stack = self.build_call_stack()
+        if frame_id is None:
+            self._show_list()
+            return None
+
+        if frame_id < 1:
+            self.print_error("Frame ID should be >= 1, check call stack with `w` command")
+            return None
+        if frame_id < 1:
+            self.print_error("Frame index is above deepest frame index")
+            return None
+        stack_idx = frame_id - 1
+        target_frame = stack[stack_idx]
+        self.curframe = target_frame
+
+        self._show_list()
+        return None
+
+    def _show_list(self, lines: int | None = None) -> None:
         frame = self.curframe
         if frame is None:
             self.print_error("Running out of a frame context. Cannot show source")
-            return None
+            return
         self._render_source_block(
             frame.f_code.co_filename, frame.f_lineno, lines or self.context_lines
         )
+
+    @accepts_int_arg
+    def do_list(self, lines: int | None) -> bool | None:  # type: ignore[override]
+        """Syntax highlighted single window listing."""
+        self._show_list(lines)
         return None
 
     do_l = do_list  # type: ignore[assignment]
