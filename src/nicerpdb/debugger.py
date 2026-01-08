@@ -23,15 +23,14 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from functools import partialmethod
-from types import FrameType
-from typing import Any, Callable, List, Optional, Protocol, TypeVar
+from types import FrameType, TracebackType
+from typing import Any, Callable, Protocol, TypeAlias, TypeVar
 
 try:
     import tomllib  # Py3.11+
 except ImportError:
     import tomli as tomllib  # type: ignore[no-redef]
 
-from rich import pretty
 from rich.console import Console
 from rich.panel import Panel
 from rich.pretty import Pretty
@@ -41,6 +40,9 @@ from rich.traceback import Traceback
 
 # Global console
 console: Console = Console()
+
+ExcInfo: TypeAlias = tuple[type[BaseException], BaseException, TracebackType]
+OptExcInfo: TypeAlias = ExcInfo | tuple[None, None, None]
 
 
 class FormattingError(Exception): ...
@@ -123,7 +125,7 @@ class RichPdb(pdb.Pdb):
 
     def format_stack_entry(
         self,
-        frame_lineno: tuple[object, int],
+        frame_lineno: tuple[FrameType, int],
         lprefix: str = "",
     ) -> str:
         """
@@ -143,7 +145,7 @@ class RichPdb(pdb.Pdb):
 
     def print_stack_entry(
         self,
-        frame_lineno: tuple[object, int],
+        frame_lineno: tuple[FrameType, int],
         prompt_prefix: str | None = None,
         context: int = 5,
     ) -> None:
@@ -256,8 +258,8 @@ class RichPdb(pdb.Pdb):
         if (frame := self.curframe) is None:
             # TODO: warning / error ?
             return
-        stack: List[FrameType] = []
-        cur: Optional[FrameType] = frame
+        stack: list[FrameType] = []
+        cur: FrameType | None = frame
 
         while cur:
             stack.append(cur)
@@ -449,8 +451,24 @@ def set_trace(*, header: str | None = None) -> None:
     dbg.set_trace(frame)
 
 
+def post_mortem(exc_info: OptExcInfo | None = None) -> None:
+    """
+    Activate post-mortem debugging of the given traceback object.
+    If no traceback is given, it uses the one of the exception that is
+    currently being handled.
+    """
+    if exc_info is None or exc_info == (None, None, None):
+        # exc_info cannot be tuple[None, None, None]
+        exc_info = sys.exc_info()  # type: ignore[assignment]
+    *_, tb = exc_info
+    dbg = RichPdb()
+    dbg.reset()
+    console.print("[bold red]Post-mortem debugging[/]")
+    dbg.interaction(None, tb)
+
+
 # ----------------------- Breakpoint integration ------------------------
-def breakpoint(*args: Any, **kwargs: Any) -> None:
+def breakpoint(*args: object, **kwargs: object) -> None:
     """Make breakpoint() invoke nicerpdb automatically."""
     # TODO: do not allocate new trace if one has already been created
     set_trace()
